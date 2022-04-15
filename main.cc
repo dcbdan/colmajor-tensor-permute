@@ -302,6 +302,10 @@ void exp03() {
   test_permutation({4,5,6}, {2,0,1}, permute_t(1024));
   std::cout << std::endl;
 
+  std::cout << "Permute 1024, rank 4" << std::endl;
+  test_permutation({4,5,6,7}, {2,3,1,0}, permute_t(1024));
+  std::cout << std::endl;
+
   std::cout << "Permute 16, rank 4" << std::endl;
   test_permutation({4,5,6,7,8}, {4,3,2,1,0}, permute_t(16));
   std::cout << std::endl;
@@ -310,7 +314,9 @@ void exp03() {
 
 
 int main() {
-  int nx = 40000;
+  exp03();
+
+  int nx = 10000;
   int ny = 10000;
 
   using tuple_tr_t = tuple<string, transpose_f>;
@@ -338,7 +344,7 @@ int main() {
       tuple_pm_t("permute 1024", permute_t(1024)),
       tuple_pm_t("permute 2048", permute_t(2048)),
       tuple_pm_t("permute 4096", permute_t(4096)),
-      tuple_pm_t("permute 8192", permute_t(9182)),
+      tuple_pm_t("permute 8192", permute_t(8192)),
     });
 
 }

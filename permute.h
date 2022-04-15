@@ -7,7 +7,10 @@ using std::vector;
 using std::tuple;
 
 #include <iostream>
-#define DCB01(x) // std::cout << x << std::endl
+#define DCB01(x)  // std::cout << x << std::endl
+
+#define __FST(x) std::get<0>(x)
+#define __SND(x) std::get<1>(x)
 
 template <typename T>
 std::ostream& operator<<(std::ostream& os, vector<T> const& xs) {
@@ -133,16 +136,54 @@ private:
     }
 
     if(block_size < min_block_size) {
-      int offset_inn;
-      int offset_out;
       indexer_t indexer(rngs, dims, perm);
-      do {
-        //auto [offset_inn, offset_out] = indexer();
-        indexer(offset_inn, offset_out);
 
-        out[offset_out] = inn[offset_inn];
+      vector<int> str_inn = indexer.str_inn;
+      vector<int> str_out = indexer.str_out;
 
-      } while(indexer.increment());
+      // Here, we directly dispatch the four loops based off of how many
+      // dimensions there are.
+      //
+      // Doing for loops is way faster than doing the indexer thing.
+      //
+      if(rngs.size() == 2) {
+        for(int i1 = __FST(rngs[1]); i1 != __SND(rngs[1]); ++i1) {
+        for(int i0 = __FST(rngs[0]); i0 != __SND(rngs[0]); ++i0) {
+          out[i0*str_out[0] + i1*str_out[1]] =
+          inn[i0*str_inn[0] + i1*str_inn[1]] ;
+        }}
+      } else
+      if(rngs.size() == 3) {
+        for(int i2 = __FST(rngs[2]); i2 != __SND(rngs[2]); ++i2) {
+        for(int i1 = __FST(rngs[1]); i1 != __SND(rngs[1]); ++i1) {
+        for(int i0 = __FST(rngs[0]); i0 != __SND(rngs[0]); ++i0) {
+          out[i0*str_out[0] + i1*str_out[1] + i2*str_out[2]] =
+          inn[i0*str_inn[0] + i1*str_inn[1] + i2*str_inn[2]] ;
+        }}}
+      } else
+      if(rngs.size() == 4) {
+        for(int i3 = __FST(rngs[3]); i3 != __SND(rngs[3]); ++i3) {
+        for(int i2 = __FST(rngs[2]); i2 != __SND(rngs[2]); ++i2) {
+        for(int i1 = __FST(rngs[1]); i1 != __SND(rngs[1]); ++i1) {
+        for(int i0 = __FST(rngs[0]); i0 != __SND(rngs[0]); ++i0) {
+          out[i0*str_out[0] + i1*str_out[1] + i2*str_out[2] + i3*str_out[3]] =
+          inn[i0*str_inn[0] + i1*str_inn[1] + i2*str_inn[2] + i3*str_inn[3]] ;
+        }}}}
+      } else
+      if(rngs.size() == 5) {
+        for(int i4 = __FST(rngs[4]); i4 != __SND(rngs[4]); ++i4) {
+        for(int i3 = __FST(rngs[3]); i3 != __SND(rngs[3]); ++i3) {
+        for(int i2 = __FST(rngs[2]); i2 != __SND(rngs[2]); ++i2) {
+        for(int i1 = __FST(rngs[1]); i1 != __SND(rngs[1]); ++i1) {
+        for(int i0 = __FST(rngs[0]); i0 != __SND(rngs[0]); ++i0) {
+          out[i0*str_out[0] + i1*str_out[1] + i2*str_out[2] + i3*str_out[3] + i4*str_out[4]] =
+          inn[i0*str_inn[0] + i1*str_inn[1] + i2*str_inn[2] + i3*str_inn[3] + i4*str_inn[4]] ;
+        }}}}}
+      } else {
+        do {
+          out[indexer.offset_out()] = inn[indexer.offset_inn()];
+        } while(indexer.increment());
+      }
 
       return;
     }
@@ -163,48 +204,79 @@ private:
       vector<tuple<int,int>> const& rngs,
       vector<int>            const& dims,
       vector<int>            const& perm):
-        rngs(rngs), dims(dims), perm(perm)
+        rngs(rngs), str_inn(dims.size()), str_out(dims.size()),
+        off_inn(0), off_out(0)
     {
+      // set the strides
+      int m_inn = 1;
+      int m_out = 1;
+      for(int i = 0; i != rngs.size(); ++i) {
+        str_inn[     i ] = m_inn;
+        str_out[perm[i]] = m_out;
+
+        m_inn *= dims[     i ];
+        m_out *= dims[perm[i]];
+      }
+
       idx.reserve(rngs.size());
-      for(auto const& [beg,_]: rngs) {
+      for(int i = 0; i != rngs.size(); ++i) {
+        auto const& [beg, _] = rngs[i];
         idx.push_back(beg);
+        off_inn += beg * str_inn[i];
+        off_out += beg * str_out[i];
       }
     }
 
+    // 0 0
+    //        incrment 0
+    // 1 0
+    //        increment 0
+    // 2 0
+    //        reset 0
+    //        increment 1
+    // 0 1
+    //        increment 0
+    // 1 1
+    //        increment 0
+    // 2 1
+    //        reset 0
+    //        reset 1
+    //        fail
     inline bool increment() {
       for(int i = 0; i < idx.size(); ++i) {
         if(idx[i] + 1 == std::get<1>(rngs[i])) {
-          idx[i] = std::get<0>(rngs[i]);
+          // Let rngs[i] = (3,9)
+          // Then idx[i] = 8
+          //      diff = 5
+          //      idx[i] -= 5 => idx[i] = 3
+          // Moreover, the offsets had to have been incremented 5 times as well,
+          // so subtract that from the offsets
+          int diff = std::get<1>(rngs[i]) - std::get<0>(rngs[i]) - 1;
+          idx[i]  -=            diff;
+          off_inn -= str_inn[i]*diff;
+          off_out -= str_out[i]*diff;
         } else {
           idx[i] += 1;
+          off_inn += str_inn[i];
+          off_out += str_out[i];
           return true;
         }
       }
       return false;
     }
 
-    inline void operator()(int& m_inn, int& m_out) const {
-      m_inn = 1;
-      m_out = 1;
+    inline int const& offset_inn() const { return off_inn; }
+    inline int const& offset_out() const { return off_out; }
 
-      int ret_inn = 0;
-      int ret_out = 0;
-
-      for(int i = 0; i != idx.size(); ++i) {
-        ret_inn += m_inn*idx[     i ];
-        ret_out += m_out*idx[perm[i]];
-
-        m_inn *= dims[     i ];
-        m_out *= dims[perm[i]];
-      }
-    }
-
-  private:
     vector<tuple<int,int>> const& rngs;
-    vector<int>            const& dims;
-    vector<int>            const& perm;
 
-    vector<int>                   idx;
+    vector<int> idx;
+
+    vector<int> str_inn;
+    vector<int> str_out;
+
+    int off_inn;
+    int off_out;
   };
 
 private:
