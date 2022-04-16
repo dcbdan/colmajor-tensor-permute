@@ -316,8 +316,8 @@ void exp03() {
 int main() {
   exp03();
 
-  int nx = 10000;
-  int ny = 10000;
+  int nx = 2000;
+  int ny = 8000;
 
   using tuple_tr_t = tuple<string, transpose_f>;
   performance_transpose(1, nx, ny,
@@ -336,15 +336,17 @@ int main() {
     });
 
   using tuple_pm_t = tuple<string, permute_f>;
-  performance_permute(1, {nx,ny}, {1,0},
+  performance_permute(1, {nx,ny,10}, {1,0,2},
     {
-      //tuple_pm_t("permute 32", permute_t(32)),
-      //tuple_pm_t("permute 64", permute_t(64)),
-      //tuple_pm_t("permute 256", permute_t(256)),
+      tuple_pm_t("permute 32", permute_t(32)),
+      tuple_pm_t("permute 64", permute_t(64)),
+      tuple_pm_t("permute 128", permute_t(128)),
+      tuple_pm_t("permute 256", permute_t(256)),
       tuple_pm_t("permute 1024", permute_t(1024)),
       tuple_pm_t("permute 2048", permute_t(2048)),
       tuple_pm_t("permute 4096", permute_t(4096)),
       tuple_pm_t("permute 8192", permute_t(8192)),
+      tuple_pm_t("permute big", permute_t(10000000)),
     });
 
 }

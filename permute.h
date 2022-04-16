@@ -7,7 +7,7 @@ using std::vector;
 using std::tuple;
 
 #include <iostream>
-#define DCB01(x)  // std::cout << x << std::endl
+#define DCB01(x) // std::cout << x << std::endl
 
 #define __FST(x) std::get<0>(x)
 #define __SND(x) std::get<1>(x)
@@ -70,13 +70,15 @@ struct permute_t {
     // (This would be correct even if there were
     //  batch dimensions.)
     if(num_batch_dims == 0) {
+      auto const [str_inn, str_out] = build_strides(dims, perm);
+
       vector<tuple<int,int>> rngs;
       rngs.reserve(dims.size());
       for(auto const& n: dims) {
         rngs.emplace_back(0, n);
       }
       DCB01("NO BATCH");
-      recurse(rngs, dims, perm, inn, out);
+      recurse(rngs, str_inn, str_out, inn, out);
       return;
     }
 
@@ -98,19 +100,21 @@ struct permute_t {
       offset *= n;
     }
 
+    auto const [str_inn, str_out] = build_strides(batch_dims, batch_perm);
+
     DCB01("ALL THE BATCHES " << batch_size << " ... " << offset);
     for(int which_batch = 0; which_batch != batch_size; ++which_batch) {
-      recurse(batch_rngs, batch_dims, batch_perm, inn, out);
+      recurse(batch_rngs, str_inn, str_out, inn, out);
       inn += offset;
       out += offset;
     }
   }
 
 private:
-  void recurse(
-    vector<tuple<int,int>> rngs,
-    vector<int> const& dims,
-    vector<int> const& perm,
+  inline void recurse(
+    vector<tuple<int,int>>& rngs,
+    vector<int> const& str_inn,
+    vector<int> const& str_out,
     float* inn, float* out) const
   {
     // Traverse over rngs to determine two things:
@@ -124,7 +128,7 @@ private:
     int block_size = 1;
     int which_recurse = 0;
     int largest_remaining = 0;
-    for(int i = 0; i != dims.size(); ++i) {
+    for(int i = 0; i != rngs.size(); ++i) {
       auto const& [beg, end] = rngs[i];
       int remaining = end - beg;
       block_size *= remaining;
@@ -136,15 +140,11 @@ private:
     }
 
     if(block_size < min_block_size) {
-      indexer_t indexer(rngs, dims, perm);
 
-      vector<int> str_inn = indexer.str_inn;
-      vector<int> str_out = indexer.str_out;
-
-      // Here, we directly dispatch the four loops based off of how many
+      // Here, directly dispatch the four loops based off of how many
       // dimensions there are.
       //
-      // Doing for loops is way faster than doing the indexer thing.
+      // Doing for loops is way faster than using indexer.
       //
       if(rngs.size() == 2) {
         for(int i1 = __FST(rngs[1]); i1 != __SND(rngs[1]); ++i1) {
@@ -180,6 +180,8 @@ private:
           inn[i0*str_inn[0] + i1*str_inn[1] + i2*str_inn[2] + i3*str_inn[3] + i4*str_inn[4]] ;
         }}}}}
       } else {
+        // This works for all dimension sizes, but is slower
+        indexer_t indexer(rngs, str_inn, str_out);
         do {
           out[indexer.offset_out()] = inn[indexer.offset_inn()];
         } while(indexer.increment());
@@ -192,32 +194,52 @@ private:
     int half = beg + ((end-beg) / 2);
 
     rngs[which_recurse] = {beg, half};
-    recurse(rngs, dims, perm, inn, out);
+    recurse(rngs, str_inn, str_out, inn, out);
 
     rngs[which_recurse] = {half,end};
-    recurse(rngs, dims, perm, inn, out);
+    recurse(rngs, str_inn, str_out, inn, out);
+
+    // Note: rngs is passed by reference, so on the recursion out,
+    //       we have set rngs back to the way it was
+    // (Bassing by copy is less to think about, but not as efficient)
+    rngs[which_recurse] = {beg, end};
+  }
+
+  static
+  tuple<
+    vector<int>,
+    vector<int>>
+      build_strides(
+        vector<int> const& dims,
+        vector<int> const& perm)
+  {
+    using vec = vector<int>;
+    tuple<vec,vec> ret(vec(dims.size()), vec(dims.size()));
+    auto& [str_inn, str_out] = ret;
+
+    // set the strides
+    int m_inn = 1;
+    int m_out = 1;
+    for(int i = 0; i != dims.size(); ++i) {
+      str_inn[     i ] = m_inn;
+      str_out[perm[i]] = m_out;
+
+      m_inn *= dims[     i ];
+      m_out *= dims[perm[i]];
+    }
+
+    return ret;
   }
 
 private:
   struct indexer_t {
     indexer_t(
       vector<tuple<int,int>> const& rngs,
-      vector<int>            const& dims,
-      vector<int>            const& perm):
-        rngs(rngs), str_inn(dims.size()), str_out(dims.size()),
+      vector<int>            const& str_inn,
+      vector<int>            const& str_out):
+        rngs(rngs), str_inn(str_inn), str_out(str_out),
         off_inn(0), off_out(0)
     {
-      // set the strides
-      int m_inn = 1;
-      int m_out = 1;
-      for(int i = 0; i != rngs.size(); ++i) {
-        str_inn[     i ] = m_inn;
-        str_out[perm[i]] = m_out;
-
-        m_inn *= dims[     i ];
-        m_out *= dims[perm[i]];
-      }
-
       idx.reserve(rngs.size());
       for(int i = 0; i != rngs.size(); ++i) {
         auto const& [beg, _] = rngs[i];
@@ -227,21 +249,18 @@ private:
       }
     }
 
-    // 0 0
-    //        incrment 0
-    // 1 0
-    //        increment 0
-    // 2 0
-    //        reset 0
-    //        increment 1
-    // 0 1
-    //        increment 0
-    // 1 1
-    //        increment 0
-    // 2 1
-    //        reset 0
-    //        reset 1
-    //        fail
+    // 0 0 0 -> increment i0, which = 0
+    // 1 0 0 -> increment i0, which = 1
+    // 2 0 0 -> reset i0, increment i1, which = 0
+    // 0 1 0 -> increment i0, which = 0
+    // 1 1 0 -> increment i0, which = 1
+    // 2 1 0 -> reset i0, increment i1, which = 0
+    // 0 2 0 -> increment i0, which = 0
+    // 1 2 0 -> increment i0, which = 2
+    // 2 2 0 -> reset i0, reset i1, increment i2, which = 0
+    // 0 0 1 -> increment i0, which = 0
+    // 1 0 1 -> ....
+
     inline bool increment() {
       for(int i = 0; i < idx.size(); ++i) {
         if(idx[i] + 1 == std::get<1>(rngs[i])) {
