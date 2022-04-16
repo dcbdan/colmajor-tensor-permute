@@ -309,6 +309,26 @@ void exp03() {
   std::cout << "Permute 16, rank 4" << std::endl;
   test_permutation({4,5,6,7,8}, {4,3,2,1,0}, permute_t(16));
   std::cout << std::endl;
+
+  std::cout << "Permute, ones 1" << std::endl;
+  test_permutation({1,1,1,1,1}, {4,3,2,1,0}, permute_t(1024));
+  std::cout << std::endl;
+
+  std::cout << "Permute, ones 2" << std::endl;
+  test_permutation({1,1,1,1,1}, {4,2,3,0,1}, permute_t(1024));
+  std::cout << std::endl;
+
+  std::cout << "Permute, fuse 1" << std::endl;
+  test_permutation({2,2,2,2,2}, {4,0,1,2,3}, permute_t(1024));
+  std::cout << std::endl;
+
+  std::cout << "Permute, fuse 2" << std::endl;
+  test_permutation({7,1,2,3,4}, {4,0,1,2,3}, permute_t(1024));
+  std::cout << std::endl;
+
+  std::cout << "Permute, fuse 3" << std::endl;
+  test_permutation({2,2,2,2,2}, {0,1,4,2,3}, permute_t(1024));
+  std::cout << std::endl;
 }
 
 
@@ -316,8 +336,8 @@ void exp03() {
 int main() {
   exp03();
 
-  int nx = 2000;
-  int ny = 8000;
+  int nx = 8000;
+  int ny = 20000;
 
   using tuple_tr_t = tuple<string, transpose_f>;
   performance_transpose(1, nx, ny,
@@ -336,7 +356,7 @@ int main() {
     });
 
   using tuple_pm_t = tuple<string, permute_f>;
-  performance_permute(1, {nx,ny,10}, {1,0,2},
+  performance_permute(1, {nx,ny}, {1,0},
     {
       tuple_pm_t("permute 32", permute_t(32)),
       tuple_pm_t("permute 64", permute_t(64)),

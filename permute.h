@@ -34,12 +34,26 @@ struct permute_t {
   permute_t(int min_block_size): min_block_size(min_block_size) {}
 
   void operator()(
-    vector<int> const& dims,
-    vector<int> const& perm,
+    vector<int> dims,
+    vector<int> perm,
     float* inn,
     float* out) const
   {
-    // TODO: fuse all of the adjacent permutations
+    // Some extra tensor-permute optimizations:
+    // 1. fuse adjacent dimensions...
+    //      so if perm is [2,0,1], fuse [0,1] yielding [1,0]
+    // 2. remove dimensions of size 1
+    //
+    // (There should be at most a handful of fuse and singletons,
+    //  so don't worrry about efficiency here)
+    DCB01("BEFORE dims, perm " << dims << ", " << perm);
+
+    while(
+      dims.size() > 1 &&
+      (has_fuse(dims, perm) || has_singleton(dims, perm)))
+    {}
+
+    DCB01("AFTER dims, perm " << dims << ", " << perm);
 
     // This is a "batched" permutation if
     // the last indices are unpermuted... That is,
@@ -232,6 +246,66 @@ private:
   }
 
 private:
+  bool has_fuse(vector<int>& dims, vector<int>& perm) const {
+    for(int i = 0; i < perm.size()-1; ++i) {
+      if(perm[i] + 1 == perm[i+1]) {
+        int which = perm[i];
+        dims[which] = dims[which] * dims[which+1];
+        remove(which+1, dims, perm);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool has_singleton(vector<int>& dims, vector<int>& perm) const {
+    for(int i = 0; i < dims.size()-1; ++i) {
+      if(dims[i] == 1) {
+        remove(i, dims, perm);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void remove(int i, vector<int>& dims, vector<int>& perm) const {
+    // i = 1
+    // [d0,d1,d2,d3,d4]
+    // [d0,d2,d3,d4]     <- copy over
+    // [d0,d2,d3]        <- resize
+    for(int x = i; x < dims.size()-1; ++x) {
+      dims[x] = dims[x+1];
+    }
+    dims.resize(dims.size()-1);
+
+    // [3,1,2,4,0]
+    // [3,2,4,0,0] <- removed
+    // [3,2,4,0]   <- resized
+    // [2,1,3,0]   <- decremented
+
+    // find where x lives
+    int x = 0;
+    for(; x != perm.size(); ++x) {
+      if(perm[x] == i) {
+        break;
+      }
+    }
+
+    // shift to the left and resize
+    for(; x < perm.size()-1; ++x) {
+      perm[x] = perm[x+1];
+    }
+    perm.resize(perm.size()-1);
+
+    // decrement things greater than i
+    for(auto& p: perm) {
+      if(p > i) {
+        p--;
+      }
+    }
+  }
+
+
   struct indexer_t {
     indexer_t(
       vector<tuple<int,int>> const& rngs,
