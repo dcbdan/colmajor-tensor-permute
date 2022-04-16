@@ -7,6 +7,7 @@
 
 #include "transpose.h"
 #include "permute.h"
+#include "print_vector.h"
 
 using std::vector;
 using std::tuple;

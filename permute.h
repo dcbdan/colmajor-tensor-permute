@@ -6,29 +6,16 @@
 using std::vector;
 using std::tuple;
 
-#include <iostream>
-#define DCB01(x) // std::cout << x << std::endl
+//#define DCB_DEBUG
+#ifdef DCB_DEBUG
+#include "print_vector.h"
+#define DCB01(x) std::cout << x << std::endl
+#else
+#define DCB01(x)
+#endif
 
 #define __FST(x) std::get<0>(x)
 #define __SND(x) std::get<1>(x)
-
-template <typename T>
-std::ostream& operator<<(std::ostream& os, vector<T> const& xs) {
-  if(xs.size() == 0) {
-    os << "[]";
-    return os;
-  }
-
-  os << "[" << xs[0];
-  for(int i = 1; i < xs.size(); ++i) {
-    os << "," << xs[i];
-  }
-  os << "]";
-
-  return os;
-}
-
-
 
 struct permute_t {
   permute_t(int min_block_size): min_block_size(min_block_size) {}
@@ -98,7 +85,6 @@ struct permute_t {
 
     // This is a batched permutation; do each batch separately.
     // The idea being that doint this in batches will increase cache hits the most.
-    //   TODO: test this, maybe add a flag.
 
     vector<int> batch_dims(dims.size() - num_batch_dims);
     std::copy(dims.begin(), dims.begin() + batch_dims.size(), batch_dims.begin());
